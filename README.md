@@ -23,27 +23,6 @@ Collects quality signals after every response. When a pattern of low quality res
 
 ---
 
-## Architecture
-
-```
-llm-router/
-├── router/
-│   ├── models.py           Pydantic models for decisions, feedback, stats
-│   ├── classifier.py       Complexity and domain classifier
-│   ├── engine.py           Core routing logic and tier selection
-│   └── model_registry.py   Model configs with cost and latency data
-├── feedback/
-│   ├── store.py            SQLite persistence for decisions and feedback
-│   └── retrainer.py        Feedback analysis and routing adjustment
-├── dashboard/
-│   └── api.py              FastAPI monitoring and routing API
-├── executor.py             Routes and executes real LLM calls
-├── main.py                 CLI entry point
-└── config.py               Environment configuration
-```
-
----
-
 ## Model Tiers
 
 | Tier | Model | Input Cost/1K | Use Case |
