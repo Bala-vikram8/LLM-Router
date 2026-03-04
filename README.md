@@ -1,54 +1,67 @@
 # LLM Router
 
-Most teams using LLMs send every single query to the same expensive model.
-A simple question like "what is the capital of France" costs the same as a
-deep technical analysis. At scale that wastes 60 to 75 percent of your budget.
+A cost-quality optimized LLM routing system with a continuous feedback loop. Routes every query to the cheapest model that can handle it well, and learns from quality signals over time to improve routing decisions.
 
-LLM Router fixes this. It looks at each query, figures out how complex it
-actually is, and sends it to the cheapest model that can handle it well.
-Simple questions go to fast cheap models. Complex analysis goes to powerful
-models. And the system learns from real usage over time so routing decisions
-get better the more you use it.
+## The Problem
+
+Every company using LLMs is sending every query to the same expensive model regardless of complexity. A simple factual question costs the same as a deep technical analysis. At scale this wastes 60 to 80 percent of your LLM budget.
+
+Existing solutions like RouteLLM use static rules that never update. When your query distribution changes, routing quality silently degrades.
+
+## What This Builds
+
+A three component system that solves this at production scale.
+
+**Component 1: Complexity Classifier**
+Scores every incoming query across reasoning depth, domain specificity, and output sensitivity. Produces a complexity score from 0 to 1 in under 10ms without calling any LLM.
+
+**Component 2: Routing Engine**
+Maps complexity scores and domains to model tiers. Applies domain-specific floor rules so coding and analysis queries never get sent to underpowered models. High-stakes keywords like medical diagnosis or compliance review force Tier 3 regardless of complexity score.
+
+**Component 3: Feedback Loop**
+Collects quality signals after every response. When a pattern of low quality responses is detected for a specific complexity and domain combination, the routing threshold is automatically adjusted upward. Routing gets smarter over time.
 
 ---
 
-## How It Works
+## Architecture
 
-Every query goes through three steps.
-
-**Step 1: Classify the query**
-The classifier reads the query and scores it on complexity from 0 to 1.
-It looks at word count, sentence structure, domain keywords, and reasoning
-depth. This takes under 10ms and does not call any LLM.
-
-**Step 2: Pick the right model**
-Based on the complexity score and domain, the router picks a model tier.
-Simple factual questions go to Tier 1. Coding and moderate reasoning go
-to Tier 2. Complex analysis and high stakes tasks go to Tier 3. Certain
-keywords like medical diagnosis or compliance review always force Tier 3
-regardless of complexity score.
-
-**Step 3: Learn from feedback**
-After every response the system collects quality signals automatically.
-When a pattern of low quality responses is detected for a specific type
-of query, the router automatically adjusts to send that pattern to a
-more capable model next time.
+```
+llm-router/
+├── router/
+│   ├── models.py           Pydantic models for decisions, feedback, stats
+│   ├── classifier.py       Complexity and domain classifier
+│   ├── engine.py           Core routing logic and tier selection
+│   └── model_registry.py   Model configs with cost and latency data
+├── feedback/
+│   ├── store.py            SQLite persistence for decisions and feedback
+│   └── retrainer.py        Feedback analysis and routing adjustment
+├── dashboard/
+│   └── api.py              FastAPI monitoring and routing API
+├── executor.py             Routes and executes real LLM calls
+├── main.py                 CLI entry point
+└── config.py               Environment configuration
+```
 
 ---
 
 ## Model Tiers
 
-| Tier | Model | Cost per 1K tokens | Best for |
+| Tier | Model | Input Cost/1K | Use Case |
 |---|---|---|---|
-| Tier 1 | Claude Haiku | $0.00025 | Simple questions, lookups, chat |
-| Tier 2 | Claude Sonnet | $0.003 | Coding, reasoning, summaries |
-| Tier 3 | Claude Opus | $0.015 | Deep analysis, high stakes tasks |
+| Tier 1 | claude-haiku-4-5 | $0.00025 | Simple factual, conversational |
+| Tier 2 | claude-sonnet-4 | $0.003 | Moderate reasoning, coding |
+| Tier 3 | claude-opus-4 | $0.015 | Complex analysis, high stakes |
 
 ---
 
 ## Setup
 
-You need Python 3.11 or higher and an Anthropic API key.
+**Prerequisites**
+- Python 3.11+
+- Anthropic API key
+
+**Installation**
+
 ```bash
 git clone https://github.com/yourusername/llm-router
 cd llm-router
@@ -58,39 +71,34 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-Open the `.env` file and add your Anthropic API key.
-```
-ANTHROPIC_API_KEY=your_key_here
-```
+Add your Anthropic API key to `.env`.
 
 ---
 
-## Running It
+## Running the Project
 
-**See routing decisions without making any API calls**
+**Demo mode (no API calls, just routing decisions)**
 ```bash
 python main.py demo
 ```
-Routes 10 sample queries from simple to complex. Shows which model each
-query gets routed to and the total cost savings compared to sending
-everything to Tier 3.
+Routes 10 sample queries across all complexity levels. Shows tier assignment, model selection, and cost savings vs routing everything to Tier 3.
 
-**Run a single real query**
+**Execute a single query (calls real API)**
 ```bash
-python main.py execute --query "Explain how transformers work"
+python main.py execute --query "Explain transformer attention mechanisms"
 ```
 
-**Run a batch of real queries**
+**Batch execution (calls real API)**
 ```bash
 python main.py batch
 ```
 
-**See your cost and quality report**
+**View cost and quality report**
 ```bash
 python main.py report
 ```
 
-**Trigger the feedback retrainer**
+**Trigger feedback retraining**
 ```bash
 python main.py retrain
 ```
@@ -99,25 +107,26 @@ python main.py retrain
 ```bash
 python main.py dashboard
 ```
-Opens at http://localhost:8000. Full API docs at http://localhost:8000/docs.
+Open http://localhost:8000/docs for the full API.
 
 ---
 
-## Dashboard API
+## Dashboard API Endpoints
 
-| Method | Endpoint | What it does |
+| Method | Endpoint | Description |
 |---|---|---|
-| POST | /route | Route a query and get the routing decision back |
-| POST | /feedback | Submit a quality rating for a completed query |
-| GET | /decisions | See all recent routing decisions |
-| GET | /stats/cost | Cost breakdown by model tier |
-| GET | /stats/quality | Quality scores by model tier |
-| POST | /retrain | Trigger the feedback retraining cycle |
-| GET | /report | Full cost and quality summary |
+| POST | /route | Route a query and get routing decision |
+| POST | /feedback | Submit quality feedback for a decision |
+| GET | /decisions | All recent routing decisions |
+| GET | /stats/cost | Cost breakdown by tier |
+| GET | /stats/quality | Quality scores by tier |
+| POST | /retrain | Trigger feedback retraining |
+| GET | /report | Full cost and quality report |
 
 ---
 
-## Using It in Your Own Code
+## Using the Router in Your Own Code
+
 ```python
 from router.engine import LLMRouter
 from feedback.store import FeedbackStore
@@ -125,34 +134,44 @@ from feedback.store import FeedbackStore
 router = LLMRouter()
 store = FeedbackStore()
 
-decision = router.route("Analyze the trade-offs between microservices and monolithic architecture")
+decision = router.route("Explain the implications of transformer architecture on LLM scaling")
 store.log_decision(decision)
 
-print(decision.selected_model)
-print(decision.selected_tier.value)
+print(f"Model: {decision.selected_model}")
+print(f"Tier: {decision.selected_tier.value}")
 print(f"Estimated cost: ${decision.estimated_cost_usd:.6f}")
-print(decision.reasoning)
+print(f"Reasoning: {decision.reasoning}")
 ```
 
 ---
 
-## Real World Impact
+## The Feedback Loop in Detail
 
-On a typical workload of 100,000 queries per day with a normal mix of
-simple and complex queries, this router saves 60 to 75 percent of LLM
-costs compared to sending everything to a powerful model. The feedback
-loop makes sure quality stays high as costs go down.
+After each response the system collects quality signals automatically. Response length, uncertainty phrases, keyword overlap, and optional user ratings all contribute to a quality score.
+
+When a specific complexity and domain combination consistently produces low quality scores across 5 or more samples, the retrainer upgrades the routing threshold for that pattern. A query that was being routed to Tier 1 might get promoted to Tier 2 after the system learns that pattern needs more model capability.
+
+This is what separates this from a keyword classifier. The routing table is not static. It evolves with your actual traffic.
+
+---
+
+## Why This Matters
+
+At 100,000 queries per day with a typical distribution of simple to complex queries, smart routing saves approximately 65 to 75 percent of LLM costs compared to routing everything to a powerful model. The feedback loop ensures quality does not degrade as savings increase.
 
 ---
 
 ## Tech Stack
 
-Python 3.11, Anthropic Claude API, FastAPI, Pydantic v2, SQLite, Uvicorn
+- Python 3.11
+- Anthropic Claude API
+- FastAPI
+- Pydantic v2
+- SQLite
+- Uvicorn
 
 ---
 
 ## Contributing
 
-Good areas to contribute: adding OpenAI and Gemini model support,
-building an LLM-based quality judge to replace the heuristic scorer,
-adding streaming response support, and Prometheus metrics integration.
+Priority areas: LLM-based complexity judge to replace heuristic classifier, multi-provider support for OpenAI and Gemini models, streaming response support, Prometheus metrics integration.
