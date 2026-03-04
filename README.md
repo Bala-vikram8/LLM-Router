@@ -104,7 +104,7 @@ Open http://localhost:8000/docs for the full API.
 
 ---
 
-## Using the Router in Your Own Code
+## Using the Router in My Own Code
 
 ```python
 from router.engine import LLMRouter
